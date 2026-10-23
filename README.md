@@ -53,9 +53,16 @@ _The web player — queue, shuffle, repeat, seek, and keyboard shortcuts._
   shortcuts.
 - "Search Everywhere" with live per-source streaming (SSE) and library matching
   — Deezer works keyless out of the box; add Spotify credentials for its catalog.
-- One-click spotDL downloads with live progress and auto play-when-ready.
-- Pluggable adapters (library / search / downloader) configured in-app, with a
-  first-run setup wizard.
+- One-click spotDL downloads with live progress and auto play-when-ready; optional
+  Lidarr integration for album downloads.
+- Pluggable adapters (library / search / downloader) configured under **Admin → Providers**,
+  with a first-run setup wizard.
+- Multiple user accounts, configurable roles and registration policies, and a
+  request approval workflow with in-app notifications.
+- Editable playlists and Spotify playlist imports as one-time snapshots or
+  scheduled synced playlists, with optional downloads of missing tracks.
+- Synced and plain-text lyrics from local files/tags or LRCLIB, personal
+  listening statistics, and optional Last.fm scrobbling.
 - Single static binary, SPA embedded; ships as one Docker image (Python3 +
   ffmpeg + pinned spotDL included).
 - Responsive UI (desktop + mobile), installable as a PWA with OS media-key /
@@ -79,21 +86,25 @@ are needed.
 
 To use an existing music folder, pin a version, or configure Spotify, download
 [.env.example](.env.example) as `.env` and uncomment the settings you need. Add
-the keyless **Deezer** search adapter in Settings after setup. Full deployment,
-backup, and reverse-proxy guidance is in [docs/deployment.md](docs/deployment.md).
+the keyless **Deezer** search adapter under **Admin → Providers → Search providers**
+after setup. Full deployment, backup, and reverse-proxy guidance is in
+[docs/deployment.md](docs/deployment.md).
 
 ## Library backends
 
 By default Reverb runs a **bundled music server** (Navidrome) inside the same
 container — just mount your music at `/music` and start it. Nothing else to set up.
 
-Prefer your own server? In **Settings → Library backend**, switch to **External
-Subsonic** and add your Navidrome/Subsonic server under **Admin**. In external
-mode nothing extra runs inside the Reverb container.
+Prefer your own server? In **Admin → Providers → Library backend**, select
+**External Subsonic**, save your Navidrome/Subsonic server configuration, then
+click **Apply (requires restart)** and restart Reverb. In external mode the
+bundled Navidrome does not run. Adapter configuration changes apply live;
+switching the library backend requires a restart.
 
 ## Configuration reference
 
-Reverb is configured by flags, environment variables, and the in-app Settings UI.
+Reverb is configured by flags, environment variables, and the in-app Admin and
+Settings pages.
 **Precedence: flags > environment > defaults.**
 
 ### Flags
@@ -113,20 +124,20 @@ Reverb is configured by flags, environment variables, and the in-app Settings UI
 | `REVERB_DEV=1` | Enable dev mode |
 | `REVERB_DOWNLOAD_DIR` | Directory spotDL downloads into **and** the folder the bundled Navidrome serves. The Docker image defaults this to `/music` |
 | `REVERB_DOWNLOAD_WORKERS` | Concurrent spotDL jobs; defaults to `2`, accepts `1`–`4`. This improves batch throughput, not a single track's transfer rate. |
-| `REVERB_ADMIN_PASSWORD` | Seed the admin password on first run only (ignored once setup is complete). **Unset it after first boot.** |
-| `REVERB_SPOTIFY_CLIENT_ID` | Spotify app Client ID (alternative to setting it in the Settings UI) |
+| `REVERB_ADMIN_PASSWORD` | Create the owner account with username `admin` on first run only (ignored once setup is complete). **Unset it after first boot.** |
+| `REVERB_SPOTIFY_CLIENT_ID` | Spotify app Client ID (alternative to setting it in Admin) |
 | `REVERB_SPOTIFY_CLIENT_SECRET` | Spotify search adapter Client Secret (overrides stored config) |
 | `REVERB_LIBRARY_PASSWORD` | Subsonic/Navidrome library adapter password (overrides stored config) |
 | `REVERB_SPOTDL_PATH` | Path to the spotDL binary. Defaults to the bundled one; rarely needed |
 | `REVERB_NAVIDROME_BIN` | Path to the Navidrome binary for bundled library mode. Defaults to the bundled one; rarely needed |
 | `REVERB_NAVIDROME_LISTEN_ADDRESS` | Address for bundled Navidrome. Defaults to `127.0.0.1` inside the container; set to `0.0.0.0` only when deliberately sharing it through a private Docker network or localhost-only port mapping. |
 
-Secrets (`REVERB_*_SECRET`, `REVERB_*_PASSWORD`, `REVERB_ADMIN_PASSWORD`) should be
-provided via environment / `.env` only — never committed. `.env` is gitignored;
-`.env.example` is the committed template. `REVERB_ADMIN_PASSWORD` is read **only on
-first run** to seed the admin account; once setup is complete it is ignored, so
-unset it after the first boot rather than leaving a plaintext password in your
-environment.
+Adapter credentials can be saved in Admin; the environment overrides listed
+above take precedence over stored values. Never commit secrets. `.env` is
+gitignored; `.env.example` is the committed template. `REVERB_ADMIN_PASSWORD` is
+read **only on first run** to seed the owner account (`admin`); once setup is
+complete it is ignored, so unset it after the first boot rather than leaving a
+plaintext password in your environment.
 
 ### Exposing Reverb to the internet
 
@@ -158,7 +169,7 @@ access and download**. By using Reverb you agree that:
 
 Reverb is a **modular monolith**: a single Go binary organized around clean
 **adapter seams** — `library` (Subsonic/Navidrome), `search` (Deezer / Spotify), and
-`downloader` (spotDL) — each registered explicitly at the composition root (no
+`downloader` (spotDL / Lidarr) — each registered explicitly at the composition root (no
 `init()` side-effects). The frontend is a React/TypeScript SPA embedded into the
 binary at build time (`-tags prod`). State and events flow through an in-process
 EventBus that backs both the WebSocket and the download manager. The full design
